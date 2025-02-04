@@ -12,12 +12,12 @@ repos:
         args: ['--in-place', '--remove-all-unused-imports', '--remove-unused-variable']
         exclude: ".*(.fits|.fts|.fit|.txt|tca.*|extern.*|.rst|.md|docs/conf.py)$"
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 'v0.9.3'
+    rev: 'v0.9.4'
     hooks:
       - id: ruff
         args: ['--fix', '--unsafe-fixes']
   -   repo: https://github.com/psf/black
-      rev: 24.10.0
+      rev: 25.1.0
       hooks:
       - id: black
   -   repo: https://github.com/PyCQA/isort
@@ -36,6 +36,6 @@ repos:
       - id: check-yaml
       - id: debug-statements
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.0
+    rev: v2.4.1
     hooks:
       - id: codespell
