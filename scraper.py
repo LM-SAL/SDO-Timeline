@@ -294,6 +294,9 @@ def process_html(url: str, data: pd.DataFrame) -> pd.DataFrame:
         new_rows = rows[0].text.split("\n\n")
         # Time is one single element whereas each event text is a separate element
         dates, text = new_rows[0].strip().split("\n"), new_rows[1:-1]
+        if dates in [[""], [" "], []]:
+            logger.warning(f"No data found for {url}")
+            return data
         instrument = ["HMI" if "HMI" in new_row else "AIA" if "AIA" in new_row else "SDO" for new_row in text]
         comment = [new_row.replace("\n", " ") for new_row in text]
         start_dates = [(_format_date(_clean_date(date), year)) for date in dates]
