@@ -33,6 +33,11 @@ MAP_4 = {
     19: "Misc Tests/Special Ops",
 }
 DATASETS = {
+    "hmi_obs_cov": {
+        "fURL": "http://jsoc.stanford.edu/doc/data/hmi/cov2/cov{}.html",
+        "RANGE": range(10, CY_END),
+        "MONTH_RANGE": range(1, 13),
+    },
     "spacecraft_night": {
         "URL": "https://aia.lmsal.com/public/sdo_spacecraft_night.txt",
         "SKIP_ROWS": [0, 1, 2, 3],
@@ -41,17 +46,12 @@ DATASETS = {
         "fURL": "https://aia.lmsal.com/public/jsocobs_info{}.html",
         "RANGE": range(10, CY_END),
     },
-    # # This site has a whole range of text files and its easier to scrape the urls that way.
-    # # Assumption is that each text file on this page has the same structure
+    # This site has a whole range of text files and its easier to scrape the urls that way.
+    # Assumption is that each text file on this page has the same structure
     "jsocinst_calibrations": {
         "URL": "https://aia.lmsal.com/public/jsocinst_calibrations.html",
         "SKIP_ROWS": [0],
         "SCRAPE": True,
-    },
-    "hmi_obs_cov": {
-        "fURL": "http://jsoc.stanford.edu/doc/data/hmi/cov2/cov{}.html",
-        "RANGE": range(10, CY_END),
-        "MONTH_RANGE": range(1, 13),
     },
     "text_block_1": {
         "URL": "./data_1.txt",

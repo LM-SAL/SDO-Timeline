@@ -299,6 +299,11 @@ def process_html(url: str, data: pd.DataFrame) -> pd.DataFrame:
             return data
         instrument = ["HMI" if "HMI" in new_row else "AIA" if "AIA" in new_row else "SDO" for new_row in text]
         comment = [new_row.replace("\n", " ") for new_row in text]
+        for date in dates:
+            # Hack workaround for http://jsoc.stanford.edu/doc/data/hmi/cov2/cov202503.html
+            # where the date just "multiple"
+            if "multiple" in date:
+                dates[dates.index(date)] = date.replace("multiple", dates[0])
         start_dates = [(_format_date(_clean_date(date), year)) for date in dates]
         end_dates = [None] * len(dates)
         new_data = pd.DataFrame(
