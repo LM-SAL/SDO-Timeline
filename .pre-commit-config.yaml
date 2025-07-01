@@ -1,7 +1,7 @@
 exclude: ".*(.fits|.fts|.fit|.txt|.csv)$"
 repos:
   - repo: https://github.com/PyCQA/docformatter
-    rev: HEAD
+    rev: v1.7.7
     hooks:
       - id: docformatter
         args: [--in-place, --pre-summary-newline, --make-summary-multi]
@@ -12,7 +12,7 @@ repos:
         args: ['--in-place', '--remove-all-unused-imports', '--remove-unused-variable']
         exclude: ".*(.fits|.fts|.fit|.txt|tca.*|extern.*|.rst|.md|docs/conf.py)$"
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 'v0.11.8'
+    rev: 'v0.12.1'
     hooks:
       - id: ruff
         args: ['--fix', '--unsafe-fixes']

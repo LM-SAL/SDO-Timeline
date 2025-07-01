@@ -41,6 +41,10 @@ def _format_date(date: str, year: Optional[str], _hack: Optional[datetime] = Non
     # Year missing - e.g., '12/10 18:15'
     elif len(date) in [9, 10, 11, 12]:
         new_date = date.split(" ")
+        if "25" in new_date[1]:
+            # This is a hack for 25 hour time
+            new_date[1] = new_date[1].replace("25", "01")
+            new_date[0] = new_date[0].split("/")[0] + "/" + str(int(new_date[0].split("/")[1]) + 1).zfill(1)
         new_date = pd.Timestamp(new_date[0] + f"/{year} " + new_date[1])
     # Multiple times - e.g., '8/28 20:35 8/14 20:50'
     # TODO: For now, just take the first entry
