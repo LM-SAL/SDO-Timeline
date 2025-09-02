@@ -1,4 +1,4 @@
-beautifulsoup4==4.13.4
+beautifulsoup4==4.13.5
 pandas==2.3.2
 requests==2.32.4
 loguru==0.7.3
