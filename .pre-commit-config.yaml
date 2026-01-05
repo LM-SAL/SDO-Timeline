@@ -12,16 +12,16 @@ repos:
         args: ['--in-place', '--remove-all-unused-imports', '--remove-unused-variable']
         exclude: ".*(.fits|.fts|.fit|.txt|tca.*|extern.*|.rst|.md|docs/conf.py)$"
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 'v0.13.3'
+    rev: 'v0.14.10'
     hooks:
       - id: ruff
         args: ['--fix', '--unsafe-fixes']
   -   repo: https://github.com/psf/black-pre-commit-mirror
-      rev: 25.9.0
+      rev: 25.12.0
       hooks:
       - id: black
   -   repo: https://github.com/PyCQA/isort
-      rev: 6.1.0
+      rev: 7.0.0
       hooks:
       - id: isort
   -   repo: https://github.com/pre-commit/pre-commit-hooks
