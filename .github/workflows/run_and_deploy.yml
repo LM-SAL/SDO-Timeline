@@ -2,18 +2,11 @@ name: Run and Deploy
 
 on:
   push:
-    branches:
-      - 'main'
+    branches: [ "main" ]
   pull_request:
-  # Allow manual runs through the web UI
   workflow_dispatch:
   schedule:
-    #        ┌───────── minute (0 - 59)
-    #        │ ┌───────── hour (0 - 23)
-    #        │ │ ┌───────── day of the month (1 - 31)
-    #        │ │ │ ┌───────── month (1 - 12 or JAN-DEC)
-    #        │ │ │ │ ┌───────── day of the week (0 - 6 or SUN-SAT)
-    - cron: '0 0 * * *'  # Every day at 00:00 UTC
+    - cron: "0 0 * * *"  # Every day at 00:00 UTC
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -25,16 +18,14 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
-      - name: Set up Python 3.11
+      - name: Set up Python 3.14
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: "3.14"
       - name: Install dependencies
-        run: |
-          python -m pip install tox
+        run: python -m pip install tox
       - name: Run Script
-        run: |
-          tox -e py311
+        run: tox -e py314
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -45,51 +36,63 @@ jobs:
   deploy:
     needs: [run_script]
     if: |
-      (
-        github.event_name != 'pull_request' && (
+      github.event_name != 'pull_request' && (
         github.ref_name == 'main' ||
         github.event_name == 'workflow_dispatch'
-        )
       )
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: daily-timeline
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v6
-    - name: Get current date
-      id: date
-      run: echo "::set-output name=date::$(date +'%Y%m%d')"
-    - name: Download all workflow run artifacts
-      uses: actions/download-artifact@v7
-      with:
-        name: files
-        path: ~/files
-    - name: Display structure of downloaded files
-      run: ls -R
-      working-directory: /home/runner/files
-    - name: Upload files then create tag and release
-      uses: ncipollo/release-action@v1
-      with:
-        name: Timeline created on ${{ steps.date.outputs.date }}
-        tag: ${{ steps.date.outputs.date }}
-        artifacts: "/home/runner/files/*"
-        replacesArtifacts: true
-        makeLatest: true
-        artifactErrorsFailBuild: true
-        allowUpdates: true
-        token: ${{ secrets.SDOTIMELINE }}
-    - name: Checkout csv to json repository
-      uses: actions/checkout@v6
-      with:
-        repository: 'derekeder/csv-to-html-table'
-        ref: 'master'
-        path: 'csv_to_html'
-    - name: Move files to csv_to_html
-      run: |
-        mv /home/runner/files/timeline_${{ steps.date.outputs.date }}.csv /home/runner/work/SDO-Timeline/SDO-Timeline/csv_to_html/data/timeline.csv
-        mv /home/runner/work/SDO-Timeline/SDO-Timeline/index.html /home/runner/work/SDO-Timeline/SDO-Timeline/csv_to_html/
-    - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v4
-      with:
-        github_token: ${{ secrets.SDOTIMELINE }}
-        publish_dir: "/home/runner/work/SDO-Timeline/SDO-Timeline/csv_to_html/"
-        force_orphan: true
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
+      - name: Download workflow artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: files
+          path: ${{ runner.temp }}/files
+      - name: Display structure of downloaded files
+        run: ls -R
+        working-directory: ${{ runner.temp }}/files
+      - name: Move/force-update the release tag to this commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f "${RELEASE_TAG}" "${GITHUB_SHA}"
+          git push origin -f "refs/tags/${RELEASE_TAG}"
+      - name: Create/update release and upload assets
+        uses: ncipollo/release-action@v1
+        with:
+          name: Timeline created on ${{ steps.date.outputs.date }}
+          tag: ${{ env.RELEASE_TAG }}
+          artifacts: "${{ runner.temp }}/files/*"
+          replacesArtifacts: true
+          makeLatest: true
+          artifactErrorsFailBuild: true
+          allowUpdates: true
+          # token omitted on purpose; defaults to github.token (GITHUB_TOKEN)
+      - name: Checkout csv-to-html-table repository
+        uses: actions/checkout@v6
+        with:
+          repository: derekeder/csv-to-html-table
+          ref: master
+          path: csv_to_html
+      - name: Move files into csv_to_html
+        run: |
+          mv "${{ runner.temp }}/files/timeline_${{ steps.date.outputs.date }}.csv" \
+             "${GITHUB_WORKSPACE}/csv_to_html/data/timeline.csv"
+          mv "${GITHUB_WORKSPACE}/index.html" \
+             "${GITHUB_WORKSPACE}/csv_to_html/"
+      - name: Deploy to GitHub Pages (gh-pages branch)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: "${GITHUB_WORKSPACE}/csv_to_html/"
+          force_orphan: true
