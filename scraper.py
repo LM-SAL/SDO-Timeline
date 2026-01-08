@@ -224,7 +224,6 @@ def process_txt(filepath: str, skip_rows: Optional[list], data: pd.DataFrame) ->
         Dataframe with the data from the text file.
     """
     if "http" in filepath:
-        logger.debug(f"Processing {filepath}")
         new_data = pd.read_fwf(
             filepath,
             header=None if "sdo_spacecraft_night" in filepath else 0,
