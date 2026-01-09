@@ -2,11 +2,11 @@ name: Run and Deploy
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
   workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *"  # Every day at 00:00 UTC
+    - cron: "0 0 * * *" # daily 00:00 UTC
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,15 +16,17 @@ jobs:
   run_script:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v6
       - name: Set up Python 3.14
         uses: actions/setup-python@v6
         with:
           python-version: "3.14"
       - name: Install dependencies
-        run: python -m pip install tox
-      - name: Run Script
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install tox
+      - name: Run tests/build
         run: tox -e py314
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
@@ -32,67 +34,62 @@ jobs:
           name: files
           path: |
             timeline*
+          if-no-files-found: error
 
   deploy:
     needs: [run_script]
-    if: |
-      github.event_name != 'pull_request' && (
-        github.ref_name == 'main' ||
-        github.event_name == 'workflow_dispatch'
-      )
+    if: github.event_name != 'pull_request' && (github.ref_name == 'main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      RELEASE_TAG: daily-timeline
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository (full history for tags)
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Get current date
+      - name: Get current date (UTC)
         id: date
-        run: echo "date=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
+        run: echo "date=$(date -u +'%Y%m%d')" >> "$GITHUB_OUTPUT"
       - name: Download workflow artifacts
         uses: actions/download-artifact@v7
         with:
           name: files
           path: ${{ runner.temp }}/files
-      - name: Display structure of downloaded files
-        run: ls -R
-        working-directory: ${{ runner.temp }}/files
-      - name: Move/force-update the release tag to this commit
+      - name: Display downloaded files
+        run: ls -R "${{ runner.temp }}/files"
+      # Keep ONE release by keeping ONE tag that always points at the latest main commit.
+      - name: Update rolling tag (nightly)
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f "${RELEASE_TAG}" "${GITHUB_SHA}"
-          git push origin -f "refs/tags/${RELEASE_TAG}"
-      - name: Create/update release and upload assets
+          git tag -f nightly
+          git push --force origin refs/tags/nightly
+      - name: Create/update GitHub release (nightly)
         uses: ncipollo/release-action@v1
         with:
-          name: Timeline created on ${{ steps.date.outputs.date }}
-          tag: ${{ env.RELEASE_TAG }}
-          artifacts: "${{ runner.temp }}/files/*"
+          tag: nightly
+          name: Timeline (nightly) — ${{ steps.date.outputs.date }}
+          artifacts: ${{ runner.temp }}/files/*
+          allowUpdates: true
           replacesArtifacts: true
           makeLatest: true
           artifactErrorsFailBuild: true
-          allowUpdates: true
-          # token omitted on purpose; defaults to github.token (GITHUB_TOKEN)
-      - name: Checkout csv-to-html-table repository
+      - name: Checkout csv-to-html-table
         uses: actions/checkout@v6
         with:
           repository: derekeder/csv-to-html-table
           ref: master
           path: csv_to_html
-      - name: Move files into csv_to_html
+      - name: Stage site content
+        shell: bash
         run: |
-          mv "${{ runner.temp }}/files/timeline_${{ steps.date.outputs.date }}.csv" \
-             "${GITHUB_WORKSPACE}/csv_to_html/data/timeline.csv"
-          mv "${GITHUB_WORKSPACE}/index.html" \
-             "${GITHUB_WORKSPACE}/csv_to_html/"
+          set -euxo pipefail
+          cp "${{ runner.temp }}/files/timeline_${{ steps.date.outputs.date }}.csv" \
+             "$GITHUB_WORKSPACE/csv_to_html/data/timeline.csv"
+          cp "$GITHUB_WORKSPACE/index.html" \
+             "$GITHUB_WORKSPACE/csv_to_html/index.html"
       - name: Deploy to GitHub Pages (gh-pages branch)
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: "${GITHUB_WORKSPACE}/csv_to_html/"
+          publish_branch: gh-pages
+          publish_dir: ./csv_to_html
           force_orphan: true
