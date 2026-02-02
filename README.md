@@ -1,15 +1,15 @@
-# SDO Non-nominal Timeline #
+# SDO Non-nominal Timeline
 
-## Warning ##
+## Warning
 
 This captures data from multiple sources and is not guaranteed to be accurate.
 It is intended to be a rough guide to the non-nominal periods of SDO.
 
-## Requirements ##
+## Requirements
 
 Requirements are in `requirements.txt`.
 
-## Notes ##
+## Notes
 
 Things to note:
 
