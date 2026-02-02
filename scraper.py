@@ -1,7 +1,12 @@
+"""
+Simple scraper for SDO event timeline data.
+"""
+
+import contextlib
+import sys
 from datetime import datetime
 from itertools import product
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 import requests
@@ -10,10 +15,13 @@ from loguru import logger
 
 from config import DATASETS, MAP_4, TIME_FORMATS
 
+logger.remove()
+logger.add(sys.stderr, level="INFO")
 
-def _format_date(date: str, year: Optional[str], _hack: Optional[datetime] = None) -> pd.Timestamp:
+
+def _format_date(date: str, year: str | None = None, start_date: datetime | None = None) -> pd.Timestamp:
     """
-    Formats the given date.
+    Format the given date.
 
     Parameters
     ----------
@@ -21,25 +29,35 @@ def _format_date(date: str, year: Optional[str], _hack: Optional[datetime] = Non
         Date string from the html file.
     year : str, optional
         The year of the provided dates, if it is not present in the date.
-    _hack : datetime.datetime, optional
-        A workaround for some dates, by default None.
+    start_date : datetime.datetime
+        The start date of the dataset.
+        Defaults to None.
 
     Returns
     -------
     pandas.Timestamp
         New date.
+
+    Raises
+    ------
+    ValueError
+        If ``start_date`` is not provided but required.
     """
     if year is None:
         return pd.Timestamp(date)
     # Only date e., '11/2' assuming month/day
-    if len(date) in [4, 5]:
+    if len(date) in {4, 5}:
         # Deal with only times with a hack
         if "/" not in date:
-            new_date = pd.Timestamp(str(_hack.date()) + " " + date)
+            if start_date is None:
+                msg = f"Start date is required for this format: {date}"
+                raise ValueError(msg)
+            new_date = pd.Timestamp(str(start_date.date()) + " " + date)
         else:
             new_date = pd.Timestamp(f"{year}-{date}")
+    # Only time - e.g., '18:15'
     # Year missing - e.g., '12/10 18:15'
-    elif len(date) in [9, 10, 11, 12]:
+    elif len(date) in {9, 10, 11, 12}:
         new_date = date.split(" ")
         if "25" in new_date[1]:
             # This is a hack for 25 hour time
@@ -51,7 +69,7 @@ def _format_date(date: str, year: Optional[str], _hack: Optional[datetime] = Non
     else:
         try:
             # This catches 2010.05.01 - 02
-            new_date = pd.Timestamp(date.split("-")[0])
+            new_date = pd.Timestamp(date.split("-", maxsplit=1)[0])
         except ValueError:
             idx = len(date) // (len(date) // 10)
             new_date = pd.Timestamp(f"{year}-{date[:idx]}")
@@ -60,7 +78,7 @@ def _format_date(date: str, year: Optional[str], _hack: Optional[datetime] = Non
 
 def _clean_date(date: str, *, extra_replace: bool = False) -> str:
     """
-    Removes any non-numeric characters from the date.
+    Remove any non-numeric characters from the date.
 
     Parameters
     ----------
@@ -75,7 +93,8 @@ def _clean_date(date: str, *, extra_replace: bool = False) -> str:
         Cleaned date.
     """
     date = (
-        " ".join(date.split())
+        " "
+        .join(date.split())
         .replace("UT", "")
         .replace(" TBD", "")
         .replace("ongoing", "")
@@ -105,17 +124,29 @@ def _process_time(data: pd.DataFrame, column: int = 0) -> pd.DataFrame:
         The dataframe with timestamps.
     column : int, optional
         The column to process, by default 0.
+
+    Returns
+    -------
+    pd.DataFrame
+        The dataframe with reformatted timestamps.
+
+    Raises
+    ------
+    ValueError
+        If no suitable time format is found.
     """
     for time_format in TIME_FORMATS:
         try:
-            data.iloc[:, column] = data.iloc[:, column].apply(
-                lambda x, time_format=time_format: datetime.strptime(x, time_format),
+            data[data.columns[column]] = data.iloc[:, column].apply(
+                lambda x, time_format=time_format: datetime.strptime(x, time_format)  # NOQA: DTZ007
             )
-            return data
-        except Exception:
-            pass
-    else:
-        raise ValueError(f"Could not find a suitable time format: {data.iloc[0, column]}")
+            return data  # NOQA: TRY300
+        except Exception as e:  # NOQA: BLE001
+            logger.debug(f"Time format {time_format} did not work for {data.iloc[0, column]} for column {column}: {e}")
+    msg = f"Could not find a suitable time format: {data.iloc[0, column]} or failed assignment to DataFrame."
+    raise ValueError(
+        msg,
+    )
 
 
 def _process_end_time(data: pd.DataFrame, column: int = 1) -> pd.DataFrame:
@@ -125,16 +156,16 @@ def _process_end_time(data: pd.DataFrame, column: int = 1) -> pd.DataFrame:
     )
     # Increment date if end time is before start time
     timedelta = [
-        pd.Timedelta(days=1) if x < y else pd.Timedelta(days=0) for x, y in zip(data.iloc[:, 0], data.iloc[:, 1])
+        pd.Timedelta(days=1) if pd.Timestamp(x) < pd.Timestamp(y) else pd.Timedelta(days=0)
+        for x, y in zip(data.iloc[:, 0], data.iloc[:, 1], strict=False)
     ]
-    data[data.columns[column]] = data[data.columns[column]] + pd.to_timedelta(timedelta)
+    data[data.columns[column]] += pd.to_timedelta(timedelta)
     return data
 
 
 def _process_data(data: pd.DataFrame, filepath: str) -> pd.DataFrame:
     """
-    Certain online text files have no comments or have a comment in the third
-    column.
+    Certain files have no comments or have a comment in the third column.
 
     Parameters
     ----------
@@ -155,11 +186,11 @@ def _process_data(data: pd.DataFrame, filepath: str) -> pd.DataFrame:
     else:
         data["Instrument"] = "SDO"
     if "Start Date/Time" in data.columns:
-        data.rename(columns={"Start Date/Time": "Start Time"}, inplace=True)
+        data = data.rename(columns={"Start Date/Time": "Start Time"})
     if "FSN" in data.columns:
-        data.rename(columns={"FSN": "Comment"}, inplace=True)
+        data = data.rename(columns={"FSN": "Comment"})
     if "Unnamed: 2" in data.columns:
-        data.rename(columns={"Unnamed: 2": "Comment"}, inplace=True)
+        data = data.rename(columns={"Unnamed: 2": "Comment"})
     if data.columns[-1] == "Comment":
         data["Comment"].fillna(pd.read_fwf(filepath).columns[0])
     else:
@@ -170,8 +201,9 @@ def _process_data(data: pd.DataFrame, filepath: str) -> pd.DataFrame:
 
 def _reformat_data(data: pd.DataFrame, filepath: str) -> pd.DataFrame:
     """
-    Due to the fact that the text files are not consistent, we need to reformat
-    them.
+    Due to the fact that the text files are not consistent.
+
+    We need to reformat them.
 
     Parameters
     ----------
@@ -189,14 +221,12 @@ def _reformat_data(data: pd.DataFrame, filepath: str) -> pd.DataFrame:
         data["Start Time"] = [None] * len(data)
         data["End Time"] = [None] * len(data)
         for i, row in enumerate(data[0].str.split()):
-            data["Start Time"][i] = row[0]
-            data["End Time"][i] = row[1]
-        data.drop(columns=[0], inplace=True)
+            data.iloc[i, data.columns.get_loc("Start Time")] = row[0]
+            data.iloc[i, data.columns.get_loc("End Time")] = row[1]
+        data = data.drop(columns=[0])
         data = data.iloc[:, [1, 2, 0]]
         data.columns = ["Start Time", "End Time", "Comment"]
-    elif "_2" in filepath:
-        data.columns = ["Start Time", "Comment"]
-    elif "_3" in filepath:
+    elif "_2" in filepath or "_3" in filepath:
         data.columns = ["Start Time", "Comment"]
     elif "_4" in filepath:
         data = data.iloc[:, [1, 0]]
@@ -205,9 +235,9 @@ def _reformat_data(data: pd.DataFrame, filepath: str) -> pd.DataFrame:
     return data
 
 
-def process_txt(filepath: str, skip_rows: Optional[list], data: pd.DataFrame) -> pd.DataFrame:
+def process_txt(filepath: str, skip_rows: list | None, data: pd.DataFrame) -> pd.DataFrame:
     """
-    Processes a text file.
+    Process a text file.
 
     Parameters
     ----------
@@ -235,16 +265,14 @@ def process_txt(filepath: str, skip_rows: Optional[list], data: pd.DataFrame) ->
         )
         if "sdo_spacecraft_night" not in filepath:
             new_data = _process_end_time(new_data)
-        if len(new_data.columns) in [2, 3]:
+        if len(new_data.columns) in {2, 3}:
             new_data = _process_data(new_data, filepath)
-        elif len(new_data.columns) > 3:
+        elif len(new_data.columns) > 3:  # NOQA: PLR2004
             logger.debug(f"Unexpected number of columns for {filepath}, dropping all but first two")
             new_data = new_data.iloc[:, [0, 1]]
             new_data.columns = ["Start Time", "End Time"]
-            try:
+            with contextlib.suppress(Exception):
                 new_data = _process_time(new_data, 1)
-            except Exception:
-                pass
             new_data = _process_data(new_data, filepath)
     else:
         new_data = pd.read_csv(filepath, header=None, sep="    ", skiprows=skip_rows, engine="python")
@@ -252,19 +280,16 @@ def process_txt(filepath: str, skip_rows: Optional[list], data: pd.DataFrame) ->
         new_data = _process_time(new_data)
         new_data["Instrument"] = new_data["Comment"].apply(lambda x: "AIA" if "AIA" in x else None)
         new_data["Instrument"] = new_data["Comment"].apply(lambda x: "HMI" if "HMI" in x else None)
-    new_data["Source"] = filepath.split("/")[-1]
+    new_data["Source"] = filepath.rsplit("/", maxsplit=1)[-1]
     data = pd.concat([data, new_data], ignore_index=True)
-    if data.empty:
-        data = new_data
-    else:
-        data = pd.concat([data, new_data], ignore_index=True)
-    new_data["Source"] = filepath.split("/")[-1]
+    data = new_data if data.empty else pd.concat([data, new_data], ignore_index=True)
+    new_data["Source"] = filepath.rsplit("/", maxsplit=1)[-1]
     return pd.concat([data, new_data], ignore_index=True)
 
 
-def process_html(url: str, data: pd.DataFrame) -> pd.DataFrame:
+def process_html(url: str, data: pd.DataFrame) -> pd.DataFrame:  # NOQA: PLR0914
     """
-    Processes an html file.
+    Process an html file.
 
     Parameters
     ----------
@@ -278,8 +303,9 @@ def process_html(url: str, data: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         Dataframe with the data from the html file.
     """
-    request = requests.get(url)
-    if request.status_code == 404:
+    request = requests.get(url, timeout=60)
+    if request.status_code == 404:  # NOQA: PLR2004
+        logger.warning(f"URL not found: {url}")
         return data
     soup = BeautifulSoup(request.text, "html.parser")
     table = soup.find_all("table")
@@ -302,17 +328,18 @@ def process_html(url: str, data: pd.DataFrame) -> pd.DataFrame:
             return data
         instrument = ["HMI" if "HMI" in new_row else "AIA" if "AIA" in new_row else "SDO" for new_row in text]
         comment = [new_row.replace("\n", " ") for new_row in text]
+        new_dates = dates.copy()
         for date in dates:
             # Hack workaround for http://jsoc.stanford.edu/doc/data/hmi/cov2/cov202503.html
             # where the date just "multiple"
             if "multiple" in date:
-                dates[dates.index(date)] = date.replace("multiple", dates[0])
-        start_dates = [(_format_date(_clean_date(date), year)) for date in dates]
-        end_dates = [None] * len(dates)
+                new_dates[new_dates.index(date)] = date.replace("multiple", new_dates[0])
+        start_dates = [(_format_date(_clean_date(date), year)) for date in new_dates]
+        end_dates = [None] * len(new_dates)
         new_data = pd.DataFrame(
             {"Start Time": start_dates, "End Time": end_dates, "Instrument": instrument, "Comment": comment},
         )
-        new_data["Source"] = url.split("/")[-1]
+        new_data["Source"] = url.rsplit("/", maxsplit=1)[-1]
         data = pd.concat([data, new_data])
     else:
         for row in rows[1:]:
@@ -336,7 +363,7 @@ def process_html(url: str, data: pd.DataFrame) -> pd.DataFrame:
             new_data = pd.Series(
                 {"Start Time": start_date, "End Time": end_date, "Instrument": instrument, "Comment": comment},
             )
-            new_data["Source"] = url.split("/")[-1]
+            new_data["Source"] = url.rsplit("/", maxsplit=1)[-1]
             data = pd.concat([data, pd.DataFrame([new_data], columns=new_data.index)]).reset_index(drop=True)
     return data
 
@@ -356,7 +383,7 @@ def scrape_url(url: str) -> list:
         List of all the urls scraped.
     """
     base_url = str(Path(url).parent).replace("https:/", "https://")
-    request = requests.get(url)
+    request = requests.get(url, timeout=60)
     soup = BeautifulSoup(request.text, "html.parser")
     urls = []
     for link in soup.find_all("a"):
@@ -439,7 +466,8 @@ if __name__ == "__main__":
             elif "html" in url:
                 final_timeline = process_html(url, final_timeline)
             else:
-                raise ValueError(f"Unknown file type for {url}")
+                msg = f"Unknown file type for {url}"
+                raise ValueError(msg)
 
     logger.info(f"{len(final_timeline.index)} rows in total")
     final_timeline = final_timeline.sort_values("Start Time")
