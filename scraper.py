@@ -317,7 +317,7 @@ def process_html(url: str, data: pd.DataFrame) -> pd.DataFrame:  # NOQA: PLR0914
     # TODO: Regex to get the year
     year = None
     if "jsocobs_info" in url:
-        year = url.split("info")[1].split(".")[0]
+        year = url.split("info")[1].split(".", maxsplit=1)[0]
     # These HTML tables are by column and not by row
     if "hmi/cov2/" in url:
         new_rows = rows[0].text.split("\n\n")
