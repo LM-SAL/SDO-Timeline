@@ -59,7 +59,7 @@ DATASETS = {
     },
     "hmi_obs_cov": {
         "fURL": "http://jsoc.stanford.edu/doc/data/hmi/cov2/cov{}.html",
-        "RANGE": range(10, CY_END),
+        "RANGE": range(11, CY_END),
         "MONTH_RANGE": range(1, 13),
     },
     # This site has a whole range of text files and its easier to scrape the urls that way.
