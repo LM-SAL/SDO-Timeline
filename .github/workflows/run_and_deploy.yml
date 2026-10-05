@@ -8,88 +8,111 @@ on:
   schedule:
     - cron: "0 0 * * *" # daily 00:00 UTC
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  codestyle:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.14
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Install dependencies
+        run: python -m pip install tox
+      - name: Run style, type and file checks
+        run: tox -e codestyle
+
   run_script:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python 3.14
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install tox
-      - name: Run tests/build
+        run: python -m pip install tox
+      - name: Run tests and the script
         run: tox -e py314
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: files
           path: |
-            timeline*
+            timeline.csv
+            timeline.json
+            timeline.txt
           if-no-files-found: error
 
-  deploy:
+  release:
     needs: [run_script]
     if: github.event_name != 'pull_request' && (github.ref_name == 'main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout repository (full history for tags)
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Get current date (UTC)
-        id: date
-        run: echo "date=$(date -u +'%Y%m%d')" >> "$GITHUB_OUTPUT"
       - name: Download workflow artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: files
           path: ${{ runner.temp }}/files
-      - name: Display downloaded files
-        run: ls -R "${{ runner.temp }}/files"
-      # Keep ONE release by keeping ONE tag that always points at the latest main commit.
-      - name: Update rolling tag (nightly)
-        run: |
-          git tag -f nightly
-          git push --force origin refs/tags/nightly
-      - name: Create/update GitHub release (nightly)
-        uses: ncipollo/release-action@v1
-        with:
-          tag: nightly
-          name: Timeline (nightly) — ${{ steps.date.outputs.date }}
-          artifacts: ${{ runner.temp }}/files/*
-          allowUpdates: true
-          replacesArtifacts: true
-          makeLatest: true
-          artifactErrorsFailBuild: true
-      - name: Checkout csv-to-html-table
-        uses: actions/checkout@v7
-        with:
-          repository: derekeder/csv-to-html-table
-          ref: master
-          path: csv_to_html
-      - name: Stage site content
-        shell: bash
+      # Keep ONE release, with a tag that always points at the latest main commit.
+      - name: Update the nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euxo pipefail
-          cp "${{ runner.temp }}/files/timeline_${{ steps.date.outputs.date }}.csv" \
-             "$GITHUB_WORKSPACE/csv_to_html/data/timeline.csv"
-          cp "$GITHUB_WORKSPACE/index.html" \
-             "$GITHUB_WORKSPACE/csv_to_html/index.html"
-      - name: Deploy to GitHub Pages (gh-pages branch)
-        uses: peaceiris/actions-gh-pages@v4
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/nightly" -f sha="$GITHUB_SHA" -F force=true \
+            || gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref=refs/tags/nightly -f sha="$GITHUB_SHA"
+          title="Timeline (nightly) — $(date -u +'%Y%m%d')"
+          gh release view nightly > /dev/null || gh release create nightly --title "$title" --notes ""
+          gh release upload nightly "$RUNNER_TEMP"/files/* --clobber
+          # Remove anything else, e.g., the old dated files
+          gh release view nightly --json assets --jq '.assets[].name | select(test("^timeline\\.(csv|json|txt)$") | not)' \
+            | xargs -r -n 1 gh release delete-asset nightly -y
+          gh release edit nightly --title "$title" --latest
+
+  pages:
+    needs: [run_script]
+    if: github.event_name != 'pull_request' && (github.ref_name == 'main' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: ./csv_to_html
-          force_orphan: true
+          persist-credentials: false
+      - name: Download workflow artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: files
+          path: site/data
+      - name: Stage site content
+        run: cp index.html site/index.html
+      - name: Upload site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

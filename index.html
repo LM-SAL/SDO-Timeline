@@ -3,69 +3,151 @@
 
 <head>
     <meta charset="utf-8">
-    <meta content="width=device-width, initial-scale=1, shrink-to-fit=no" name="viewport">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>CSV to HTML Table</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SDO Non-nominal Timeline</title>
     <meta name="author" content="Nabil Freij">
-    <meta content="Display of the SDO Timeline CSV file as a searchable, filterable, pretty HTML table.">
+    <meta name="description" content="The non-nominal periods of SDO as a searchable, filterable table and timeline.">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.4.0/css/tabulator_simple.min.css"
+        integrity="sha512-KaUGRYqMe4JumA2QszHldFiyOiEu6qfW5qCqRliiCL77TiIajbttU8pHJZ6yCF2efL1sFgq+ahC6r1hMrAzmeg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/8.5.4/vis-timeline-graph2d.min.css"
+        integrity="sha512-KQvP81PiLLSehDxMeRLv58g78+Vtvecl6pCLFwkTi1Iz9UlkgjuHxWZsVAkS9fRuj/GN4E2iYlaj1iWWG6J8ig=="
+        crossorigin="anonymous" referrerpolicy="no-referrer">
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 0 auto;
+            max-width: 1600px;
+            padding: 0 16px;
+        }
 
-    <!-- Bootstrap core CSS -->
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/css/bootstrap.min.css" integrity="sha384-GJzZqFGwb1QTTN6wy59ffF1BuGJpLSa9DkKMp0DgiMDm4iYMj70gZWKYbI706tWS"
-        crossorigin="anonymous">
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.10.19/css/dataTables.bootstrap4.min.css">
+        [role="tablist"] {
+            margin-bottom: 8px;
+        }
+
+        [role="tab"] {
+            font: inherit;
+            padding: 6px 16px;
+            border: 1px solid #182c57;
+            background: none;
+            cursor: pointer;
+        }
+
+        [role="tab"][aria-selected="true"] {
+            background: #182c57;
+            color: #fff;
+        }
+
+        #timeline .vis-item.SDO {
+            background: #c9d3ea;
+            border-color: #182c57;
+        }
+
+        #timeline .vis-item.AIA {
+            background: #f5d0a9;
+            border-color: #be6d00;
+        }
+
+        #timeline .vis-item.HMI {
+            background: #c4e3b5;
+            border-color: #2f6309;
+        }
+    </style>
 </head>
 
 <body>
-    <div class="container-fluid">
-        <main class="row">
-            <div class="col">
-                <h1>SDO Non-nominal Timeline</h1>
-
-                <p>This captures data from multiple sources and is not guaranteed to be accurate.
-                    It is intended to be a rough guide to the non-nominal periods of SDO.</p>
-
-                <div id="table-container"></div>
-            </div>
-        </main>
-        <footer class="row">
-            <div class="col">
-                <hr>
-                <p class="text-right"><a href="https://github.com/derekeder/csv-to-html-table">CSV to HTML Table</a> by
-                    <a href="http://derekeder.com">Derek
-                        Eder</a></p>
-            </div>
-        </footer>
+    <h1>SDO Non-nominal Timeline</h1>
+    <p>This captures data from multiple sources and is not guaranteed to be accurate.
+        It is intended to be a rough guide to the non-nominal periods of SDO. All times are UTC.</p>
+    <p>
+        Download as <a href="data/timeline.csv">CSV</a>, <a href="data/timeline.txt">TXT</a> or
+        <a href="data/timeline.json">JSON</a>,
+        <a href="https://lite.datasette.io/?csv=https://lm-sal.github.io/SDO-Timeline/data/timeline.csv">query it with
+            Datasette Lite</a> or see <a href="https://github.com/LM-SAL/SDO-Timeline">how it is made</a>.
+    </p>
+    <div role="tablist">
+        <button role="tab" id="table-tab" aria-controls="table" aria-selected="true">Table</button>
+        <button role="tab" id="timeline-tab" aria-controls="timeline" aria-selected="false">Timeline</button>
     </div>
-    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.2.1/js/bootstrap.bundle.min.js"></script>
-    <script src="js/jquery.csv.min.js"></script>
-    <script src="https://cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.10.19/js/dataTables.bootstrap4.min.js"></script>
-    <script src="js/csv_to_html_table.js"></script>
+    <div id="table" role="tabpanel" aria-labelledby="table-tab"></div>
+    <div role="tabpanel" aria-labelledby="timeline-tab" hidden>
+        <p>Showing the events that match the filters in the table. Scroll to zoom and drag to move.</p>
+        <div id="timeline"></div>
+    </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.4.0/js/tabulator.min.js"
+        integrity="sha512-QEm/YyHse/1FVEczmITPosuIcPRjK1FmVsw7M5yoxogODzb3B/mao7WKabBLrM6jT8VCahLCsbsaGvtHkFmAQQ=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-timeline/8.5.4/vis-timeline-graph2d.min.js"
+        integrity="sha512-eeITpKWVe3C1a75I4XId8OEzwHO75bvak4Z+WTiYQj2pOH+CNOyzUz0vzBo/8RBNf4aMHawK5Rutih0z8LLmew=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script>
-        function format_link(link) {
-            if (link)
-                return "<a href='" + link + "' target='_blank'>" + link + "</a>";
-            else return "";
+        const DAY = 86400000;
+        const INSTRUMENTS = ["SDO", "AIA", "HMI"];
+        const escapeHtml = (text) => text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+        // Dates without a time of day cover the whole day
+        const toDate = (text, isEnd = false) =>
+            text.length === 10 ? new Date(Date.parse(text) + (isEnd ? DAY : 0)) : new Date(text.replace(" ", "T") + "Z");
+
+        function toItem(row, id) {
+            const start = toDate(row["Start Time"]);
+            const end = row["End Time"] === "Unknown" ? null : toDate(row["End Time"], true);
+            const label = row.Comment.length > 40 ? row.Comment.slice(0, 40) + "…" : row.Comment;
+            return {
+                id,
+                group: row.Instrument,
+                className: row.Instrument,
+                start,
+                ...(end > start ? { end, type: "range" } : { type: "point" }),
+                content: escapeHtml(label),
+                title: `${escapeHtml(row["Start Time"])} to ${escapeHtml(row["End Time"])} (${escapeHtml(row.Source)})<br>${escapeHtml(row.Comment)}`,
+            };
         }
 
-        CsvToHtmlTable.init({
-            csv_path: "data/timeline.csv",
-            element: "table-container",
-            allow_download: true,
-            csv_options: {
-                separator: ",",
-                delimiter: '"'
-            },
-            datatables_options: {
-                lengthChange: true,
-                paging: true
-            },
-            custom_formatting: [
-                [4, format_link]
-            ]
+        const timeColumn = { headerFilter: "input", sorter: "string", width: 175 };
+        const table = new Tabulator("#table", {
+            ajaxURL: "data/timeline.json",
+            height: "70vh",
+            layout: "fitColumns",
+            responsiveLayout: "collapse",
+            placeholder: "No matching events",
+            initialSort: [{ column: "Start Time", dir: "desc" }],
+            columns: [
+                { title: "Start Time", field: "Start Time", ...timeColumn },
+                { title: "End Time", field: "End Time", ...timeColumn },
+                {
+                    title: "Instrument", field: "Instrument", width: 120,
+                    headerFilter: "list", headerFilterParams: { values: INSTRUMENTS, clearable: true },
+                },
+                { title: "Source", field: "Source", headerFilter: "input", formatter: "textarea", width: 220 },
+                { title: "Comment", field: "Comment", headerFilter: "input", formatter: "textarea", minWidth: 300 },
+            ],
         });
+
+        const items = new vis.DataSet();
+        let timeline;
+        function show(name) {
+            for (const tab of document.querySelectorAll("[role=tab]")) {
+                const selected = tab.id === `${name}-tab`;
+                tab.setAttribute("aria-selected", selected);
+                document.querySelector(`[aria-labelledby=${tab.id}]`).hidden = !selected;
+            }
+            if (name !== "timeline") return;
+            items.clear();
+            items.add(table.getData("active").map(toItem));
+            timeline ??= new vis.Timeline(document.getElementById("timeline"), items,
+                INSTRUMENTS.map((id) => ({ id, content: id })), {
+                start: Date.now() - 180 * DAY,
+                end: Date.now() + 60 * DAY,
+                height: "65vh",
+                cluster: { maxItems: 5, fitOnDoubleClick: true },
+                moment: (date) => vis.moment(date).utc(),
+                tooltip: { followMouse: true },
+            });
+        }
+        for (const tab of document.querySelectorAll("[role=tab]")) {
+            tab.addEventListener("click", () => show(tab.id.replace("-tab", "")));
+        }
     </script>
 </body>
 
