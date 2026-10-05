@@ -13,7 +13,7 @@ It is intended to be a rough guide to the non-nominal periods of SDO.
 - [AIA and HMI calibrations](https://aia.lmsal.com/public/jsocinst_calibrations.html)
 - [HMI data coverage events](http://jsoc.stanford.edu/doc/data/hmi/cov2/) (one page per month)
 - The SDO, AIA, HMI and GS Maintenance calendars from the [JSOC calendar](https://aia.lmsal.com/public/SDOcalendar.html),
-  which includes events scheduled for the next 180 days
+  which includes events scheduled for the next 180 days ("TBD" placeholder events are skipped)
 - `data_*.txt`, static lists of older events
 
 ## Requirements
@@ -28,7 +28,8 @@ Things to note:
 
 1. If there is no end date, it fills that in with "Unknown".
 2. If the source has no time of day, the date is given without one.
-3. Events that start within 5 minutes of each other are combined into one row.
+3. Events of the same instrument that start within 5 minutes of each other are combined into one row.
+4. Events labelled SDO whose comment only names AIA or only names HMI are given that instrument.
 
 This runs daily on GitHub Actions to create `timeline.csv`, `timeline.json` and `timeline.txt` and update the single
 `nightly` release with them, so the latest files are always at

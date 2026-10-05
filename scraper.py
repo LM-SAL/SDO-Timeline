@@ -389,9 +389,12 @@ def process_ics(url: str) -> pd.DataFrame:
     stop = datetime.now(tz=UTC) + timedelta(days=180)
     events = []
     for event in recurring_ical_events.of(calendar).between(datetime(2010, 1, 1, tzinfo=UTC), stop):
+        summary = str(event.get("SUMMARY", "")).strip()
+        # "TBD-..." events are placeholders for calibrations, which are mostly also there as real events
+        if summary.startswith("TBD"):
+            continue
         start, end = event.start, event.end
         all_day = not isinstance(start, datetime)
-        summary = str(event.get("SUMMARY", "")).strip()
         description = " ".join(BeautifulSoup(str(event.get("DESCRIPTION", "")), "html.parser").get_text(" ").split())
         events.append({
             "Start Time": _ics_time(start),
@@ -512,9 +515,27 @@ def _join(values: pd.Series) -> str:
     return " and ".join(dict.fromkeys(values.astype(str)))
 
 
+def relabel_instruments(data: pd.DataFrame) -> pd.Series:
+    """
+    Use the instrument named in the comment for events labelled SDO.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Dataframe with the instrument and comment columns.
+
+    Returns
+    -------
+    pd.Series
+        The instruments, where SDO is replaced if the comment only names AIA or only names HMI.
+    """
+    named = data["Comment"].map(lambda comment: "/".join(sorted(set(re.findall(r"\b(AIA|HMI)\b", str(comment))))))
+    return data["Instrument"].mask((data["Instrument"] == "SDO") & named.isin(["AIA", "HMI"]), named)
+
+
 def drop_duplicates(data: pd.DataFrame) -> pd.DataFrame:
     """
-    Combine events that start within 5 minutes of the first event of a group.
+    Combine events of the same instrument that start within 5 minutes of the first event of a group.
 
     Parameters
     ----------
@@ -526,18 +547,19 @@ def drop_duplicates(data: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         Deduplicated dataframe.
     """
-    groups, first = [], None
-    for start in data["Start Time"]:
-        if first is None or start - first > pd.Timedelta("5 minute"):
-            first = start
-        groups.append(first)
+    # Each group is named after its first row
+    groups, first = [], {}
+    for row, (start, instrument) in enumerate(zip(data["Start Time"], data["Instrument"], strict=True)):
+        if instrument not in first or start - first[instrument][0] > pd.Timedelta("5 minute"):
+            first[instrument] = (start, row)
+        groups.append(first[instrument][1])
     return (
         data
         .groupby(groups, sort=False)
         .agg({
             "Start Time": "first",
             "End Time": "max",
-            "Instrument": lambda x: x.iloc[0] if (x == x.iloc[0]).all() else "SDO",
+            "Instrument": "first",
             "Source": _join,
             "Comment": _join,
             "Start Date Only": "all",
@@ -604,6 +626,7 @@ if __name__ == "__main__":
     final_timeline["End Date Only"] = final_timeline["End Date Only"].isin([True])
     final_timeline["Instrument"] = final_timeline["Instrument"].fillna("SDO")
     final_timeline["Comment"] = final_timeline["Comment"].fillna("No Comment")
+    final_timeline["Instrument"] = relabel_instruments(final_timeline)
     final_timeline = drop_duplicates(final_timeline.sort_values("Start Time", ignore_index=True))
     logger.info(f"{len(final_timeline.index)} rows in after deduplication")
     final_timeline["Start Time"] = format_times(final_timeline["Start Time"], final_timeline["Start Date Only"])
