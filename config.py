@@ -3,10 +3,13 @@ Basic configuration file for SDO data scraping.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 
 __all__ = ["CY_END", "DATASETS", "MAP_4", "TIME_FORMATS"]
 
 CY_END = int(str(datetime.now(tz=UTC).year + 1)[2:])
+# The public Google calendars embedded on https://aia.lmsal.com/public/SDOcalendar.html
+CALENDAR_URL = "https://calendar.google.com/calendar/ical/{}%40group.calendar.google.com/public/basic.ics"
 TIME_FORMATS = [
     "%d-%b-%y %H:%M:%S",  # 06-Apr-10 21:11:55
     "%Y.%m.%d",  # 2010.05.18
@@ -36,7 +39,7 @@ MAP_4 = {
     18: "Misc Instrument Errors Not Listed Above",
     19: "Misc Tests/Special Ops",
 }
-DATASETS = {
+DATASETS: dict[str, dict[str, Any]] = {
     "jsocobs_info": {
         "fURL": "https://aia.lmsal.com/public/jsocobs_info{}.html",
         "RANGE": range(10, CY_END),
@@ -68,5 +71,20 @@ DATASETS = {
         "URL": "https://aia.lmsal.com/public/jsocinst_calibrations.html",
         "SKIP_ROWS": [0],
         "SCRAPE": True,
+    },
+    "spacecraft_events": {
+        "URL": "https://aia.lmsal.com/public/sdo_spacecraft_events.txt",
+    },
+    "sdo_calendar": {
+        "URL": CALENDAR_URL.format("abffodi9ifekpd0ssvukl67cr8"),
+    },
+    "aia_calendar": {
+        "URL": CALENDAR_URL.format("q0s1ttjvm6740vfrjjrdnfkvmg"),
+    },
+    "hmi_calendar": {
+        "URL": CALENDAR_URL.format("n45p70vdr8pvbdu235v7bhutvc"),
+    },
+    "gs_maintenance_calendar": {
+        "URL": CALENDAR_URL.format("ggsvug1sp5kt2ub8uifeqleims"),
     },
 }

@@ -1,23 +1,28 @@
-# Allow unused variables when underscore-prefixed.
-lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 target-version = "py314"
 line-length = 120
-extend-exclude=[
+preview = true
+extend-exclude = [
     "__pycache__",
     "build",
-    "tools/**",
 ]
-lint.select = [
+
+[lint]
+select = [
     "ALL",
 ]
-lint.ignore = [
-    "TD",
-    "FIX",
-    "CPY001",
-    "D",
+ignore = [
+    "missing-copyright-notice",        # The license is in LICENSE, not in each file
+    "missing-trailing-comma",          # Conflicts with the formatter
+    "unnecessary-multiline-docstring", # docformatter puts the summary on its own line
 ]
-lint.extend-ignore = [
-    "COM812", # The following rule may cause conflicts when used with the formatter
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[lint.per-file-ignores]
+"test_*.py" = [
+    "assert",                 # Tests use assert
+    "import-private-name",    # Tests check the private helpers
+    "magic-value-comparison", # Comparing against values is the point of a test
 ]
 
 [lint.pydocstyle]
