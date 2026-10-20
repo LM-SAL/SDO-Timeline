@@ -6,9 +6,25 @@ updates:
       interval: "monthly"
     cooldown:
       default-days: 7
+    groups:
+      actions:
+        patterns:
+          - "*"
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "monthly"
     cooldown:
       default-days: 7
+    groups:
+      pip:
+        patterns:
+          - "*"
+      pip-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
